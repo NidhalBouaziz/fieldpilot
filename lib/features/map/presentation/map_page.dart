@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../core/models/customer.dart';
 import '../../../core/repositories/providers.dart';
+import '../../../shared/widgets/logout_button.dart';
 
 class MapPage extends ConsumerWidget {
   const MapPage({super.key});
@@ -24,7 +25,10 @@ class MapPage extends ConsumerWidget {
             .toList();
         if (positioned.isEmpty) {
           return Scaffold(
-            appBar: AppBar(title: const Text('Map')),
+            appBar: AppBar(
+              title: const Text('Map'),
+              actions: const [LogoutButton()],
+            ),
             body: const Center(
               child: Text(
                 'Customer locations appear here once latitude and longitude are saved.',
@@ -34,7 +38,10 @@ class MapPage extends ConsumerWidget {
         }
 
         return Scaffold(
-          appBar: AppBar(title: const Text('Map')),
+          appBar: AppBar(
+            title: const Text('Map'),
+            actions: const [LogoutButton()],
+          ),
           body: GoogleMap(
             initialCameraPosition: CameraPosition(
               target: LatLng(

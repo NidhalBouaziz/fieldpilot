@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/repositories/providers.dart';
+import '../../../shared/widgets/logout_button.dart';
 
 class ExportPage extends ConsumerStatefulWidget {
   const ExportPage({super.key});
@@ -52,7 +53,10 @@ class _ExportPageState extends ConsumerState<ExportPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Export')),
+      appBar: AppBar(
+        title: const Text('Export'),
+        actions: const [LogoutButton()],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/models/customer.dart';
 import '../../../core/repositories/providers.dart';
+import '../../../shared/widgets/logout_button.dart';
 
 class CustomerFormPage extends ConsumerStatefulWidget {
   const CustomerFormPage({super.key});
@@ -103,7 +104,10 @@ class _CustomerFormPageState extends ConsumerState<CustomerFormPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('New customer')),
+      appBar: AppBar(
+        title: const Text('New customer'),
+        actions: const [LogoutButton()],
+      ),
       body: Form(
         key: _formKey,
         child: ListView(

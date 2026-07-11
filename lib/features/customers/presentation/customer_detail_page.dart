@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/repositories/providers.dart';
 import '../../../shared/widgets/customer_status_chip.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/logout_button.dart';
 
 class CustomerDetailPage extends ConsumerWidget {
   const CustomerDetailPage({required this.customerId, super.key});
@@ -28,7 +29,10 @@ class CustomerDetailPage extends ConsumerWidget {
         }
 
         return Scaffold(
-          appBar: AppBar(title: Text(customer.displayName)),
+          appBar: AppBar(
+            title: Text(customer.displayName),
+            actions: const [LogoutButton()],
+          ),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [

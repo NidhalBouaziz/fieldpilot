@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/models/customer.dart';
 import '../../../core/repositories/providers.dart';
 import '../../../core/services/ocr_service.dart';
+import '../../../shared/widgets/logout_button.dart';
 
 class ScannerPage extends ConsumerStatefulWidget {
   const ScannerPage({super.key});
@@ -175,7 +176,10 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Document scanner')),
+      appBar: AppBar(
+        title: const Text('Document scanner'),
+        actions: const [LogoutButton()],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'logout_button.dart';
+
 class PageScaffold extends StatelessWidget {
   const PageScaffold({
     required this.title,
@@ -19,7 +21,7 @@ class PageScaffold extends StatelessWidget {
       slivers: [
         SliverAppBar.large(
           title: Text(title),
-          actions: actions,
+          actions: [...actions, const LogoutButton()],
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           surfaceTintColor: Colors.transparent,
           titleTextStyle: Theme.of(context).textTheme.headlineMedium?.copyWith(

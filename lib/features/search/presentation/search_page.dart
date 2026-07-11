@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/models/customer.dart';
 import '../../../core/repositories/providers.dart';
 import '../../../shared/widgets/customer_status_chip.dart';
+import '../../../shared/widgets/logout_button.dart';
 
 final searchQueryProvider = StateProvider.autoDispose<String>((_) => '');
 
@@ -16,7 +17,10 @@ class SearchPage extends ConsumerWidget {
     final query = ref.watch(searchQueryProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Search')),
+      appBar: AppBar(
+        title: const Text('Search'),
+        actions: const [LogoutButton()],
+      ),
       body: Column(
         children: [
           Padding(
@@ -49,7 +53,7 @@ class SearchPage extends ConsumerWidget {
                         [
                           customer.phone,
                           customer.city,
-                        ].where((value) => value.isNotEmpty).join(' • '),
+                        ].where((value) => value.isNotEmpty).join(' | '),
                       ),
                       trailing: CustomerStatusChip(status: customer.status),
                       onTap: () => context.go('/customers/${customer.id}'),
