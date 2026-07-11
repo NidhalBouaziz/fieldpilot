@@ -13,6 +13,8 @@ class CustomersPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final customers = ref.watch(customersProvider);
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
     return customers.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -47,30 +49,71 @@ class CustomersPage extends ConsumerWidget {
           else
             for (final entry in items.asMap().entries)
               Card(
-                child: ListTile(
-                  leading: CircleAvatar(child: Text('${entry.key + 1}')),
-                  title: Text(
-                    entry.value.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    [
-                      if (entry.value.phone.isNotEmpty) entry.value.phone,
-                      if (entry.value.city.isNotEmpty) entry.value.city,
-                      if (entry.value.address != null) entry.value.address!,
-                    ].join(' | '),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: SizedBox(
-                    width: 118,
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: CustomerStatusChip(status: entry.value.status),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => context.go('/customers/${entry.value.id}'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${entry.key + 1}',
+                            style: TextStyle(
+                              color: colorScheme.onPrimaryContainer,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                entry.value.displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                [
+                                  if (entry.value.phone.isNotEmpty)
+                                    entry.value.phone,
+                                  if (entry.value.city.isNotEmpty)
+                                    entry.value.city,
+                                  if (entry.value.address != null)
+                                    entry.value.address!,
+                                ].join(' | '),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              CustomerStatusChip(status: entry.value.status),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.chevron_right,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ],
                     ),
                   ),
-                  onTap: () => context.go('/customers/${entry.value.id}'),
                 ),
               ),
         ],

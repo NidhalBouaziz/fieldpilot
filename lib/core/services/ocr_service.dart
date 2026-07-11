@@ -22,7 +22,13 @@ class ExtractedCustomerRow {
   final String? phone;
   final String? taxCode;
 
-  bool get isUsable => code.isNotEmpty && name.trim().length >= 3;
+  bool get hasData =>
+      name.trim().isNotEmpty ||
+      address?.trim().isNotEmpty == true ||
+      phone?.trim().isNotEmpty == true ||
+      taxCode?.trim().isNotEmpty == true;
+
+  bool get isUsable => code.isNotEmpty && hasData;
 }
 
 class ExtractedCustomerText {
@@ -68,12 +74,9 @@ class OcrService {
     final builders = <_CustomerRowBuilder>[];
     _CustomerRowBuilder? current;
 
-    for (final line in rawText
-        .split(RegExp(r'\r?\n'))
-        .map((value) => value.trim())
-        .where((value) => value.isNotEmpty)) {
+    for (final line in _logicalLines(rawText)) {
       if (_isHeaderLine(line)) continue;
-      final codeMatch = RegExp(r'^(\d{5,6})\s*(.*)$').firstMatch(line);
+      final codeMatch = _rowStart(line);
       if (codeMatch != null) {
         current = _CustomerRowBuilder(codeMatch.group(1)!);
         final rest = codeMatch.group(2)?.trim();
@@ -152,8 +155,8 @@ class OcrService {
       if (value.isEmpty) continue;
 
       final x = line.boundingBox.left / pageWidth;
-      final codeMatch = RegExp(r'^(\d{5,6})\s*(.*)$').firstMatch(value);
-      if (codeMatch != null && x < 0.24) {
+      final codeMatch = _rowStart(value);
+      if (codeMatch != null && x < 0.46) {
         current = _CustomerRowBuilder(codeMatch.group(1)!);
         final rest = codeMatch.group(2)?.trim();
         if (rest != null && rest.isNotEmpty) {
@@ -171,7 +174,8 @@ class OcrService {
         .map((builder) => builder.build())
         .where((row) => row.isUsable)
         .toList();
-    return rows.length > 1 ? rows : extractRows(text.text);
+    final textRows = extractRows(text.text);
+    return _bestRows(rows, textRows);
   }
 
   void _assignColumn(_CustomerRowBuilder row, String value, double x) {
@@ -199,6 +203,52 @@ class OcrService {
     if (phone != null) {
       row.phone ??= phone;
     }
+  }
+
+  List<String> _logicalLines(String rawText) {
+    final lines = <String>[];
+    final rowBreak = RegExp(r'\s+(?=\d{5,6}\s+[A-Z][A-Z(])');
+    for (final sourceLine in rawText.split(RegExp(r'\r?\n'))) {
+      final normalized = sourceLine.trim();
+      if (normalized.isEmpty) continue;
+      lines.addAll(
+        normalized
+            .replaceAll(rowBreak, '\n')
+            .split('\n')
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty),
+      );
+    }
+    return lines;
+  }
+
+  RegExpMatch? _rowStart(String value) {
+    final trimmed = value.trim();
+    final match = RegExp(r'^(\d{5,6})\s*(.*)$').firstMatch(trimmed);
+    if (match == null) return null;
+    final rest = match.group(2)?.trim() ?? '';
+    if (rest.isEmpty) return match;
+    if (_looksLikeTaxCode(trimmed)) return null;
+    if (RegExp(r'^\d[\d\s]{5,}$').hasMatch(trimmed)) return null;
+    return match;
+  }
+
+  List<ExtractedCustomerRow> _bestRows(
+    List<ExtractedCustomerRow> positionedRows,
+    List<ExtractedCustomerRow> textRows,
+  ) {
+    final winner =
+        positionedRows.length >= textRows.length ? positionedRows : textRows;
+    final fallback =
+        identical(winner, positionedRows) ? textRows : positionedRows;
+    final merged = <ExtractedCustomerRow>[];
+    final seen = <String>{};
+
+    for (final row in [...winner, ...fallback]) {
+      final key = '${row.code}|${row.name.toUpperCase()}';
+      if (seen.add(key)) merged.add(row);
+    }
+    return merged;
   }
 
   bool _isHeaderLine(String line) {
@@ -243,6 +293,12 @@ class _CustomerRowBuilder {
   void addName(String value) {
     final cleaned = value.trim();
     if (cleaned.isEmpty || RegExp(r'^\d+$').hasMatch(cleaned)) return;
+    if (RegExp(
+      r'^(RUE|AV|AVENUE|CITE|ROUTE|RTE|KM|PLACE|RES|RESIDENCE)\b',
+    ).hasMatch(cleaned.toUpperCase())) {
+      addAddress(cleaned);
+      return;
+    }
     _name.add(cleaned);
   }
 
@@ -253,9 +309,10 @@ class _CustomerRowBuilder {
   }
 
   ExtractedCustomerRow build() {
+    final displayName = name.isEmpty ? 'Client $code' : name;
     return ExtractedCustomerRow(
       code: code,
-      name: name,
+      name: displayName,
       address: _address.isEmpty ? null : _address.join(' '),
       phone: phone,
       taxCode: taxCode,

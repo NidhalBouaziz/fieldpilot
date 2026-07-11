@@ -41,8 +41,8 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
     try {
       final image = await _picker.pickImage(
         source: source,
-        imageQuality: 92,
-        maxWidth: 2200,
+        imageQuality: 100,
+        maxWidth: 3200,
       );
       if (image == null) return;
 
@@ -79,10 +79,8 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
 
       _sourceLabel = 'PDF: ${file.name}';
       _rawText.text = [
-        'Imported document: ${file.name}',
+        'PDF: ${file.name}',
         if (file.size > 0) 'Size: ${_formatBytes(file.size)}',
-        '',
-        'Type or paste extracted customer text here before saving.',
       ].join('\n');
       setState(() {
         _reviewCustomer = null;
@@ -173,31 +171,86 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('OCR scanner')),
+      appBar: AppBar(title: const Text('Document scanner')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: colorScheme.primary,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.document_scanner_outlined,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Bulk customer import',
+                        style: textTheme.titleLarge?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _bulkCustomers.isEmpty
+                            ? 'Ready to scan customer tables'
+                            : '${_bulkCustomers.length} customers detected',
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: Colors.white.withValues(alpha: 0.82),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
             children: [
-              FilledButton.icon(
-                onPressed: _busy ? null : _capturePhoto,
-                icon: const Icon(Icons.photo_camera_outlined),
-                label: const Text('Camera'),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _busy ? null : _capturePhoto,
+                  icon: const Icon(Icons.photo_camera_outlined),
+                  label: const Text('Camera'),
+                ),
               ),
-              OutlinedButton.icon(
-                onPressed: _busy ? null : _importImage,
-                icon: const Icon(Icons.image_outlined),
-                label: const Text('Gallery'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _busy ? null : _importPdf,
-                icon: const Icon(Icons.picture_as_pdf_outlined),
-                label: const Text('PDF'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : _importImage,
+                  icon: const Icon(Icons.image_outlined),
+                  label: const Text('Gallery'),
+                ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _importPdf,
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('PDF'),
           ),
           if (_busy) ...[
             const SizedBox(height: 12),
@@ -211,20 +264,36 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
             ),
           ],
           const SizedBox(height: 12),
-          TextField(
-            controller: _rawText,
-            minLines: 8,
-            maxLines: 12,
-            decoration: const InputDecoration(
-              labelText: 'Recognized text',
-              hintText: 'Scan a photo, import an image, or edit document text.',
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Recognized text',
+                    style: textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _rawText,
+                    minLines: 7,
+                    maxLines: 10,
+                    decoration: const InputDecoration(
+                      labelText: 'Document text',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _busy ? null : _extract,
+                    icon: const Icon(Icons.auto_fix_high_outlined),
+                    label: const Text('Extract customers'),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: _extract,
-            icon: const Icon(Icons.document_scanner_outlined),
-            label: const Text('Extract fields'),
           ),
           if (_bulkCustomers.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -236,13 +305,18 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
                   children: [
                     Text(
                       'Bulk review',
-                      style: Theme.of(context).textTheme.titleMedium,
+                      style: textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 4),
-                    Text('${_bulkCustomers.length} customers detected'),
+                    Text(
+                      '${_bulkCustomers.length} customers detected',
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
                     const SizedBox(height: 12),
                     for (final entry
-                        in _bulkCustomers.take(12).toList().asMap().entries)
+                        in _bulkCustomers.take(20).toList().asMap().entries)
                       ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
@@ -262,8 +336,8 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    if (_bulkCustomers.length > 12)
-                      Text('+ ${_bulkCustomers.length - 12} more'),
+                    if (_bulkCustomers.length > 20)
+                      Text('+ ${_bulkCustomers.length - 20} more'),
                     const SizedBox(height: 12),
                     FilledButton.icon(
                       onPressed: _saveBulk,
@@ -285,7 +359,9 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
                   children: [
                     Text(
                       'Review before saving',
-                      style: Theme.of(context).textTheme.titleMedium,
+                      style: textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(_reviewCustomer!.displayName),

@@ -21,8 +21,16 @@ class CustomerStatusChip extends StatelessWidget {
 
     return Chip(
       label: Text(status.label),
-      avatar: CircleAvatar(backgroundColor: color, radius: 5),
+      avatar: CircleAvatar(backgroundColor: color, radius: 4),
       visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      side: BorderSide(color: color.withValues(alpha: 0.22)),
+      backgroundColor: color.withValues(alpha: 0.10),
+      labelStyle: TextStyle(
+        color: color,
+        fontWeight: FontWeight.w800,
+        fontSize: 12,
+      ),
     );
   }
 }
