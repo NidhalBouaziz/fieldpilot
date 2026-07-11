@@ -1,4 +1,9 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
 
 class OcrDocument {
   const OcrDocument({required this.rawText, required this.rows});
@@ -64,6 +69,46 @@ class OcrService {
       return OcrDocument(
         rawText: recognizedText.text,
         rows: _rowsFromRecognizedText(recognizedText),
+      );
+    } finally {
+      await recognizer.close();
+    }
+  }
+
+  Future<OcrDocument> recognizePdf(Uint8List pdfBytes) async {
+    final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    final tempDirectory = await getTemporaryDirectory();
+    final session = DateTime.now().microsecondsSinceEpoch;
+    final rawPages = <String>[];
+    final positionedRows = <ExtractedCustomerRow>[];
+    var pageIndex = 0;
+
+    try {
+      await for (final page in Printing.raster(pdfBytes, dpi: 220)) {
+        pageIndex += 1;
+        final pageFile = File(
+          '${tempDirectory.path}/fieldpilot_pdf_${session}_$pageIndex.png',
+        );
+        await pageFile.writeAsBytes(await page.toPng(), flush: true);
+
+        try {
+          final image = InputImage.fromFilePath(pageFile.path);
+          final recognizedText = await recognizer.processImage(image);
+          if (recognizedText.text.trim().isNotEmpty) {
+            rawPages.add(recognizedText.text);
+          }
+          positionedRows.addAll(_rowsFromRecognizedText(recognizedText));
+        } finally {
+          if (await pageFile.exists()) {
+            await pageFile.delete();
+          }
+        }
+      }
+
+      final rawText = rawPages.join('\n');
+      return OcrDocument(
+        rawText: rawText,
+        rows: _bestRows(positionedRows, extractRows(rawText)),
       );
     } finally {
       await recognizer.close();

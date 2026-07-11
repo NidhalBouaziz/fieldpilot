@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -78,14 +80,41 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
       final file = result?.files.single;
       if (file == null) return;
 
-      _sourceLabel = 'PDF: ${file.name}';
-      _rawText.text = [
-        'PDF: ${file.name}',
-        if (file.size > 0) 'Size: ${_formatBytes(file.size)}',
-      ].join('\n');
       setState(() {
+        _sourceLabel = 'Reading PDF: ${file.name}';
         _reviewCustomer = null;
         _bulkCustomers = const [];
+      });
+
+      final bytes = file.bytes ??
+          (file.path == null ? null : await File(file.path!).readAsBytes());
+      if (bytes == null) {
+        throw StateError('Could not read PDF bytes.');
+      }
+
+      final document = await ref.read(ocrServiceProvider).recognizePdf(bytes);
+      _rawText.text = document.rawText;
+      _sourceLabel = 'PDF: ${file.name}';
+
+      if (document.rawText.trim().isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No readable text found in this PDF.')),
+        );
+        setState(() {
+          _reviewCustomer = null;
+          _bulkCustomers = const [];
+        });
+        return;
+      }
+
+      if (document.rows.length > 1) {
+        _setBulkCustomers(document.rows);
+      } else {
+        await _extract();
+      }
+      setState(() {
+        _sourceLabel = 'PDF: ${file.name}';
       });
     } catch (error) {
       if (!mounted) return;
@@ -387,13 +416,6 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
         ],
       ),
     );
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    final kb = bytes / 1024;
-    if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
-    return '${(kb / 1024).toStringAsFixed(1)} MB';
   }
 
   void _setBulkCustomers(List<ExtractedCustomerRow> rows) {
