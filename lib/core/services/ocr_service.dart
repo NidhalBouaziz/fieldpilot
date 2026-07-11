@@ -12,6 +12,20 @@ class OcrDocument {
   final List<ExtractedCustomerRow> rows;
 }
 
+class PdfOcrProgress {
+  const PdfOcrProgress({
+    required this.completedPages,
+    required this.totalPages,
+    required this.pageNumber,
+  });
+
+  final int completedPages;
+  final int totalPages;
+  final int pageNumber;
+
+  double get fraction => totalPages == 0 ? 0 : completedPages / totalPages;
+}
+
 class ExtractedCustomerRow {
   const ExtractedCustomerRow({
     required this.code,
@@ -75,7 +89,15 @@ class OcrService {
     }
   }
 
-  Future<OcrDocument> recognizePdf(Uint8List pdfBytes) async {
+  Future<OcrDocument> recognizePdf(
+    Uint8List pdfBytes, {
+    required List<int> pages,
+    void Function(PdfOcrProgress progress)? onProgress,
+  }) async {
+    if (pages.isEmpty) {
+      throw ArgumentError.value(pages, 'pages', 'Choose at least one page.');
+    }
+
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
     final tempDirectory = await getTemporaryDirectory();
     final session = DateTime.now().microsecondsSinceEpoch;
@@ -84,8 +106,13 @@ class OcrService {
     var pageIndex = 0;
 
     try {
-      await for (final page in Printing.raster(pdfBytes, dpi: 220)) {
+      await for (final page in Printing.raster(
+        pdfBytes,
+        pages: pages,
+        dpi: 220,
+      )) {
         pageIndex += 1;
+        final pageNumber = pages[pageIndex - 1] + 1;
         final pageFile = File(
           '${tempDirectory.path}/fieldpilot_pdf_${session}_$pageIndex.png',
         );
@@ -103,6 +130,13 @@ class OcrService {
             await pageFile.delete();
           }
         }
+        onProgress?.call(
+          PdfOcrProgress(
+            completedPages: pageIndex,
+            totalPages: pages.length,
+            pageNumber: pageNumber,
+          ),
+        );
       }
 
       final rawText = rawPages.join('\n');

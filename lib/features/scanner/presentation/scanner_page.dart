@@ -23,6 +23,8 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
   Customer? _reviewCustomer;
   List<Customer> _bulkCustomers = const [];
   String? _sourceLabel;
+  String? _scanProgressLabel;
+  double? _scanProgress;
   bool _busy = false;
 
   @override
@@ -80,8 +82,20 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
       final file = result?.files.single;
       if (file == null) return;
 
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+      if (!mounted) return;
+
+      final range = await _choosePdfPageRange(file.name);
+      if (range == null) return;
+
       setState(() {
+        _busy = true;
         _sourceLabel = 'Reading PDF: ${file.name}';
+        _scanProgress = 0;
+        _scanProgressLabel =
+            'Scanning pages ${range.firstPage}-${range.lastPage}';
         _reviewCustomer = null;
         _bulkCustomers = const [];
       });
@@ -92,7 +106,18 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
         throw StateError('Could not read PDF bytes.');
       }
 
-      final document = await ref.read(ocrServiceProvider).recognizePdf(bytes);
+      final document = await ref.read(ocrServiceProvider).recognizePdf(
+        bytes,
+        pages: range.zeroBasedPages,
+        onProgress: (progress) {
+          if (!mounted) return;
+          setState(() {
+            _scanProgress = progress.fraction;
+            _scanProgressLabel = 'Scanned page ${progress.pageNumber} '
+                '(${progress.completedPages}/${progress.totalPages})';
+          });
+        },
+      );
       _rawText.text = document.rawText;
       _sourceLabel = 'PDF: ${file.name}';
 
@@ -122,7 +147,13 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
         SnackBar(content: Text('Could not import PDF: $error')),
       );
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _scanProgress = null;
+          _scanProgressLabel = null;
+        });
+      }
     }
   }
 
@@ -287,7 +318,20 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
           ),
           if (_busy) ...[
             const SizedBox(height: 12),
-            const LinearProgressIndicator(),
+            LinearProgressIndicator(value: _scanProgress),
+            if (_scanProgressLabel != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _scanProgress == null
+                    ? _scanProgressLabel!
+                    : '$_scanProgressLabel '
+                        '(${(_scanProgress! * 100).round()}%)',
+                style: textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ],
           if (_sourceLabel != null) ...[
             const SizedBox(height: 12),
@@ -449,6 +493,105 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
     });
   }
 
+  Future<_PdfPageRange?> _choosePdfPageRange(String fileName) async {
+    final firstPage = TextEditingController(text: '1');
+    final lastPage = TextEditingController(text: '1');
+    String? error;
+
+    try {
+      return await showDialog<_PdfPageRange>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Choose PDF pages'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    fileName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: firstPage,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'From page',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: lastPage,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'To'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Use printed page numbers. Example: 75 to 80.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final first = int.tryParse(firstPage.text.trim());
+                    final last = int.tryParse(lastPage.text.trim());
+                    if (first == null || last == null) {
+                      setDialogState(() {
+                        error = 'Enter valid page numbers.';
+                      });
+                      return;
+                    }
+                    if (first < 1 || last < first) {
+                      setDialogState(() {
+                        error = 'The page range must start at 1 or higher.';
+                      });
+                      return;
+                    }
+                    Navigator.of(context).pop(
+                      _PdfPageRange(firstPage: first, lastPage: last),
+                    );
+                  },
+                  child: const Text('Scan range'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      firstPage.dispose();
+      lastPage.dispose();
+    }
+  }
+
   String _guessCity(String? address) {
     final value = address?.toUpperCase() ?? '';
     const aliases = {
@@ -483,5 +626,18 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
       if (value.contains(entry.key)) return entry.value;
     }
     return '';
+  }
+}
+
+class _PdfPageRange {
+  const _PdfPageRange({required this.firstPage, required this.lastPage});
+
+  final int firstPage;
+  final int lastPage;
+
+  List<int> get zeroBasedPages {
+    return [
+      for (var page = firstPage; page <= lastPage; page++) page - 1,
+    ];
   }
 }
