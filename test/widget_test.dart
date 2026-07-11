@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('FieldPilot opens on the dashboard', (tester) async {
+  testWidgets('FieldPilot opens on login', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -16,7 +16,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Today'), findsWidgets);
-    expect(find.text("Today's visits"), findsOneWidget);
+    expect(find.text('FieldPilot'), findsOneWidget);
+    expect(find.text('Sign in'), findsOneWidget);
   });
 }

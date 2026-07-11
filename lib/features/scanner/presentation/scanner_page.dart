@@ -128,11 +128,8 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
         email: extracted.email,
         address: extracted.address,
         city: extracted.city ?? '',
-        governorate: '',
-        notes: [
-          if (_sourceLabel != null) _sourceLabel,
-          if (extracted.notes != null) extracted.notes,
-        ].join('\n\n'),
+        governorate: extracted.city ?? '',
+        notes: extracted.notes,
         status: CustomerStatus.neverVisited,
         createdAt: now,
         updatedAt: now,
@@ -244,17 +241,23 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
                     const SizedBox(height: 4),
                     Text('${_bulkCustomers.length} customers detected'),
                     const SizedBox(height: 12),
-                    for (final customer in _bulkCustomers.take(12))
+                    for (final entry
+                        in _bulkCustomers.take(12).toList().asMap().entries)
                       ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.person_outline),
-                        title: Text(customer.displayName),
+                        leading: CircleAvatar(
+                          radius: 14,
+                          child: Text('${entry.key + 1}'),
+                        ),
+                        title: Text(entry.value.displayName),
                         subtitle: Text(
                           [
-                            if (customer.address != null) customer.address!,
-                            if (customer.phone.isNotEmpty) customer.phone,
-                          ].join(' • '),
+                            if (entry.value.city.isNotEmpty) entry.value.city,
+                            if (entry.value.phone.isNotEmpty) entry.value.phone,
+                            if (entry.value.address != null)
+                              entry.value.address!,
+                          ].join(' | '),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -328,10 +331,8 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
         city: city,
         governorate: city,
         notes: [
-          if (_sourceLabel != null) _sourceLabel,
-          'Imported from customer table',
-          'Code: ${row.code}',
-          if (row.taxCode != null) 'Tax code: ${row.taxCode}',
+          'Code client: ${row.code}',
+          if (row.taxCode != null) 'Code TVA: ${row.taxCode}',
         ].join('\n'),
         status: CustomerStatus.neverVisited,
         createdAt: now,
@@ -348,21 +349,36 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
 
   String _guessCity(String? address) {
     final value = address?.toUpperCase() ?? '';
-    const cities = [
-      'SFAX',
-      'GABES',
-      'KASSERINE',
-      'KAIROUAN',
-      'MEDNIN',
-      'KEBELI',
-      'SOUSSE',
-      'MONASTIR',
-      'GAFSA',
-      'TOZEUR',
-      'TUNIS',
-    ];
-    for (final city in cities) {
-      if (value.contains(city)) return city;
+    const aliases = {
+      'SAKIET EZZIT': 'SAKIET EZZIT',
+      'SAKIET': 'SAKIET EZZIT',
+      'FOUSSANA': 'FOUSSANA',
+      'KASSERINE': 'KASSERINE',
+      'DOUALY': 'GAFSA',
+      'GAFSA': 'GAFSA',
+      'KAIROUAN': 'KAIROUAN',
+      'DJERBA': 'DJERBA',
+      'GABES': 'GABES',
+      'MEDNIN': 'MEDNIN',
+      'MEDENINE': 'MEDENINE',
+      'ELLOUZA': 'ELLOUZA',
+      'SFAX': 'SFAX',
+      'REDEYEF': 'REDEYEF',
+      'KEBELI': 'KEBELI',
+      'BOUHEL': 'BOUHEL',
+      'BOUHELL': 'BOUHEL',
+      'MSSAKEN': 'MSSAKEN',
+      'HAFFOUZ': 'HAFFOUZ',
+      'SIDI MANSOUR': 'SIDI MANSOUR',
+      'GHANNOUCHE': 'GHANNOUCHE',
+      'MONASTIR': 'MONASTIR',
+      'SOUSSE': 'SOUSSE',
+      'TOZEUR': 'TOZEUR',
+      'TUNIS': 'TUNIS',
+      'FERIANA': 'FERIANA',
+    };
+    for (final entry in aliases.entries) {
+      if (value.contains(entry.key)) return entry.value;
     }
     return '';
   }

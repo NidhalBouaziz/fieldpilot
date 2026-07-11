@@ -37,7 +37,7 @@ class CustomersPage extends ConsumerWidget {
               icon: Icons.people_alt_outlined,
               title: 'No customers yet',
               message:
-                  'Create the first profile or scan a business card during your next visit.',
+                  'Create the first profile or scan a document during your next visit.',
               action: FilledButton.icon(
                 onPressed: () => context.go('/customers/new'),
                 icon: const Icon(Icons.person_add_alt_1),
@@ -45,23 +45,32 @@ class CustomersPage extends ConsumerWidget {
               ),
             )
           else
-            for (final customer in items)
+            for (final entry in items.asMap().entries)
               Card(
                 child: ListTile(
-                  leading: CircleAvatar(
-                    child: Text(
-                      customer.displayName.characters.first.toUpperCase(),
-                    ),
+                  leading: CircleAvatar(child: Text('${entry.key + 1}')),
+                  title: Text(
+                    entry.value.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  title: Text(customer.displayName),
                   subtitle: Text(
                     [
-                      customer.companyName,
-                      customer.city,
-                    ].where((value) => value.isNotEmpty).join(' • '),
+                      if (entry.value.phone.isNotEmpty) entry.value.phone,
+                      if (entry.value.city.isNotEmpty) entry.value.city,
+                      if (entry.value.address != null) entry.value.address!,
+                    ].join(' | '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  trailing: CustomerStatusChip(status: customer.status),
-                  onTap: () => context.go('/customers/${customer.id}'),
+                  trailing: SizedBox(
+                    width: 118,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: CustomerStatusChip(status: entry.value.status),
+                    ),
+                  ),
+                  onTap: () => context.go('/customers/${entry.value.id}'),
                 ),
               ),
         ],

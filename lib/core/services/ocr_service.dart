@@ -85,8 +85,9 @@ class OcrService {
       }
 
       if (current == null) continue;
-      if (_phone(line) != null && current.phone == null) {
-        current.phone = _phone(line);
+      final phone = _phone(line);
+      if (phone != null && current.phone == null) {
+        current.phone = phone;
       } else if (_looksLikeTaxCode(line)) {
         current.taxCode = line;
       } else if (current.name.isEmpty) {
@@ -203,17 +204,14 @@ class OcrService {
   bool _isHeaderLine(String line) {
     final value = line.toLowerCase();
     return value.contains('etat des clients') ||
-        value.contains('représentant') ||
-        value.contains('representant') ||
+        value.contains('repr') ||
         value == 'code' ||
         value.contains('raison sociale') ||
         value == 'adresse' ||
-        value == 'tél' ||
         value == 'tel' ||
         value == 'fax' ||
         value.contains('code tva') ||
         value.contains('page :') ||
-        value.contains('edité le') ||
         value.contains('edite le') ||
         value.contains('distrimed 2025');
   }
@@ -224,8 +222,10 @@ class OcrService {
   }
 
   bool _looksLikeTaxCode(String value) {
-    return RegExp(r'\d{5,}[A-Z]{1,4}\d{0,4}', caseSensitive: false)
-        .hasMatch(value.trim());
+    return RegExp(
+      r'\d{5,}[A-Z]{1,4}\d{0,4}',
+      caseSensitive: false,
+    ).hasMatch(value.trim());
   }
 }
 
