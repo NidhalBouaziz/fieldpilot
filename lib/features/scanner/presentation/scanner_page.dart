@@ -17,7 +17,8 @@ class ScannerPage extends ConsumerStatefulWidget {
   ConsumerState<ScannerPage> createState() => _ScannerPageState();
 }
 
-class _ScannerPageState extends ConsumerState<ScannerPage> {
+class _ScannerPageState extends ConsumerState<ScannerPage>
+    with WidgetsBindingObserver {
   final _rawText = TextEditingController();
   final _picker = ImagePicker();
   Customer? _reviewCustomer;
@@ -25,12 +26,30 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
   String? _sourceLabel;
   String? _scanProgressLabel;
   double? _scanProgress;
+  OcrScanCancellationToken? _pdfScanToken;
   bool _busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void dispose() {
+    _cancelPdfScan(showMessage: false);
+    WidgetsBinding.instance.removeObserver(this);
     _rawText.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _cancelPdfScan(showMessage: false);
+    }
   }
 
   Future<void> _capturePhoto() async {
@@ -106,9 +125,14 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
         throw StateError('Could not read PDF bytes.');
       }
 
+      final token = OcrScanCancellationToken();
+      setState(() {
+        _pdfScanToken = token;
+      });
       final document = await ref.read(ocrServiceProvider).recognizePdf(
         bytes,
         pages: range.zeroBasedPages,
+        cancellationToken: token,
         onProgress: (progress) {
           if (!mounted) return;
           setState(() {
@@ -118,6 +142,7 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
           });
         },
       );
+      _pdfScanToken = null;
       _rawText.text = document.rawText;
       _sourceLabel = 'PDF: ${file.name}';
 
@@ -141,6 +166,15 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
       setState(() {
         _sourceLabel = 'PDF: ${file.name}';
       });
+    } on OcrScanCancelled {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('PDF scan cancelled.')),
+      );
+      setState(() {
+        _reviewCustomer = null;
+        _bulkCustomers = const [];
+      });
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -152,7 +186,10 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
           _busy = false;
           _scanProgress = null;
           _scanProgressLabel = null;
+          _pdfScanToken = null;
         });
+      } else {
+        _pdfScanToken = null;
       }
     }
   }
@@ -332,6 +369,14 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
                 ),
               ),
             ],
+            if (_pdfScanToken != null) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => _cancelPdfScan(),
+                icon: const Icon(Icons.stop_circle_outlined),
+                label: const Text('Cancel scan'),
+              ),
+            ],
           ],
           if (_sourceLabel != null) ...[
             const SizedBox(height: 12),
@@ -491,6 +536,23 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
       _reviewCustomer = null;
       _bulkCustomers = customers;
     });
+  }
+
+  void _cancelPdfScan({bool showMessage = true}) {
+    final token = _pdfScanToken;
+    if (token == null) return;
+    token.cancel();
+    if (!mounted) return;
+    setState(() {
+      _scanProgressLabel = 'Cancelling scan...';
+    });
+    if (showMessage) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Cancelling PDF scan...')),
+        );
+    }
   }
 
   Future<_PdfPageRange?> _choosePdfPageRange(String fileName) async {

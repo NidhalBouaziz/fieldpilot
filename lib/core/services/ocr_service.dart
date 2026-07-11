@@ -26,6 +26,23 @@ class PdfOcrProgress {
   double get fraction => totalPages == 0 ? 0 : completedPages / totalPages;
 }
 
+class OcrScanCancellationToken {
+  bool _cancelled = false;
+
+  bool get isCancelled => _cancelled;
+
+  void cancel() {
+    _cancelled = true;
+  }
+}
+
+class OcrScanCancelled implements Exception {
+  const OcrScanCancelled();
+
+  @override
+  String toString() => 'OCR scan cancelled.';
+}
+
 class ExtractedCustomerRow {
   const ExtractedCustomerRow({
     required this.code,
@@ -93,6 +110,7 @@ class OcrService {
     Uint8List pdfBytes, {
     required List<int> pages,
     void Function(PdfOcrProgress progress)? onProgress,
+    OcrScanCancellationToken? cancellationToken,
   }) async {
     if (pages.isEmpty) {
       throw ArgumentError.value(pages, 'pages', 'Choose at least one page.');
@@ -111,16 +129,21 @@ class OcrService {
         pages: pages,
         dpi: 220,
       )) {
+        _throwIfCancelled(cancellationToken);
         pageIndex += 1;
         final pageNumber = pages[pageIndex - 1] + 1;
         final pageFile = File(
           '${tempDirectory.path}/fieldpilot_pdf_${session}_$pageIndex.png',
         );
-        await pageFile.writeAsBytes(await page.toPng(), flush: true);
+        final pngBytes = await page.toPng();
+        _throwIfCancelled(cancellationToken);
+        await pageFile.writeAsBytes(pngBytes, flush: true);
 
         try {
+          _throwIfCancelled(cancellationToken);
           final image = InputImage.fromFilePath(pageFile.path);
           final recognizedText = await recognizer.processImage(image);
+          _throwIfCancelled(cancellationToken);
           if (recognizedText.text.trim().isNotEmpty) {
             rawPages.add(recognizedText.text);
           }
@@ -146,6 +169,12 @@ class OcrService {
       );
     } finally {
       await recognizer.close();
+    }
+  }
+
+  void _throwIfCancelled(OcrScanCancellationToken? token) {
+    if (token?.isCancelled == true) {
+      throw const OcrScanCancelled();
     }
   }
 
