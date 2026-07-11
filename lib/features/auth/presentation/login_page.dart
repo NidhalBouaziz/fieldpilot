@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_auth/local_auth.dart';
 
@@ -47,9 +48,39 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _biometricLogin() async {
-    final auth = LocalAuthentication();
-    final ok = await auth.authenticate(localizedReason: 'Unlock FieldPilot');
-    if (ok && mounted) context.go('/dashboard');
+    setState(() => _error = null);
+    try {
+      if (FirebaseBootstrap.configured &&
+          FirebaseAuth.instance.currentUser == null) {
+        setState(() {
+          _error =
+              'Sign in once with email and password before using biometrics.';
+        });
+        return;
+      }
+
+      final auth = LocalAuthentication();
+      final supported = await auth.isDeviceSupported();
+      final canCheck = await auth.canCheckBiometrics;
+      if (!supported || !canCheck) {
+        setState(() {
+          _error = 'No biometric unlock is available on this device.';
+        });
+        return;
+      }
+
+      final ok = await auth.authenticate(
+        localizedReason: 'Unlock FieldPilot',
+        biometricOnly: true,
+        persistAcrossBackgrounding: true,
+      );
+      if (ok && mounted) context.go('/dashboard');
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message ?? 'Biometric unlock failed.';
+      });
+    }
   }
 
   @override

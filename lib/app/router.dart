@@ -1,6 +1,8 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/services/firebase_bootstrap.dart';
 import '../features/analytics/presentation/analytics_page.dart';
 import '../features/auth/presentation/forgot_password_page.dart';
 import '../features/auth/presentation/login_page.dart';
@@ -20,6 +22,20 @@ import '../shared/widgets/app_shell.dart';
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/login',
+    redirect: (_, state) {
+      final authRoute = switch (state.uri.path) {
+        '/login' || '/register' || '/forgot-password' => true,
+        _ => false,
+      };
+      final signedIn = FirebaseBootstrap.configured &&
+          FirebaseAuth.instance.currentUser != null;
+
+      if (signedIn && authRoute) return '/dashboard';
+      if (FirebaseBootstrap.configured && !signedIn && !authRoute) {
+        return '/login';
+      }
+      return null;
+    },
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
       GoRoute(path: '/register', builder: (_, __) => const RegisterPage()),
