@@ -1,10 +1,10 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/services/firebase_bootstrap.dart';
+import '../../../core/services/supabase_bootstrap.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -33,15 +33,15 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      if (FirebaseBootstrap.configured) {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
+      if (SupabaseBootstrap.configured) {
+        await SupabaseBootstrap.client.auth.signInWithPassword(
           email: _email.text.trim(),
           password: _password.text,
         );
       }
       if (mounted) context.go('/dashboard');
-    } on FirebaseAuthException catch (error) {
-      setState(() => _error = error.message ?? 'Unable to sign in.');
+    } on AuthException catch (error) {
+      setState(() => _error = error.message);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -50,8 +50,8 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _biometricLogin() async {
     setState(() => _error = null);
     try {
-      if (FirebaseBootstrap.configured &&
-          FirebaseAuth.instance.currentUser == null) {
+      if (SupabaseBootstrap.configured &&
+          SupabaseBootstrap.client.auth.currentSession == null) {
         setState(() {
           _error =
               'Sign in once with email and password before using biometrics.';

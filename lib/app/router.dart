@@ -1,8 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../core/services/firebase_bootstrap.dart';
+import '../core/services/supabase_bootstrap.dart';
 import '../features/analytics/presentation/analytics_page.dart';
 import '../features/auth/presentation/forgot_password_page.dart';
 import '../features/auth/presentation/login_page.dart';
@@ -27,11 +26,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         '/login' || '/register' || '/forgot-password' => true,
         _ => false,
       };
-      final signedIn = FirebaseBootstrap.configured &&
-          FirebaseAuth.instance.currentUser != null;
+      final signedIn = SupabaseBootstrap.configured &&
+          SupabaseBootstrap.client.auth.currentSession != null;
 
       if (signedIn && authRoute) return '/dashboard';
-      if (FirebaseBootstrap.configured && !signedIn && !authRoute) {
+      if (SupabaseBootstrap.configured && !signedIn && !authRoute) {
         return '/login';
       }
       return null;

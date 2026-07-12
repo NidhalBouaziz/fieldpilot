@@ -1,8 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/services/firebase_bootstrap.dart';
+import '../../../core/services/supabase_bootstrap.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -26,8 +25,8 @@ class _RegisterPageState extends State<RegisterPage> {
   Future<void> _register() async {
     setState(() => _loading = true);
     try {
-      if (FirebaseBootstrap.configured) {
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      if (SupabaseBootstrap.configured) {
+        await SupabaseBootstrap.client.auth.signUp(
           email: _email.text.trim(),
           password: _password.text,
         );

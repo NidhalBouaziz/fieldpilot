@@ -1,8 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/services/firebase_bootstrap.dart';
+import '../../core/services/supabase_bootstrap.dart';
 
 class LogoutButton extends StatelessWidget {
   const LogoutButton({super.key});
@@ -36,8 +35,8 @@ class LogoutButton extends StatelessWidget {
     );
     if (confirmed != true || !context.mounted) return;
 
-    if (FirebaseBootstrap.configured) {
-      await FirebaseAuth.instance.signOut();
+    if (SupabaseBootstrap.configured) {
+      await SupabaseBootstrap.client.auth.signOut();
     }
     if (context.mounted) context.go('/login');
   }
