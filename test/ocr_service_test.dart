@@ -136,6 +136,160 @@ GABES
     expect(rows[1].phone, '94035783');
   });
 
+  test('extractRows recovers orphan customer names as separate rows', () {
+    const rawText = '''
+411037 TABBESSI TAREK
+RUE ABOU KACEM CHABBI
+TRIGUI HANA
+AV HABIB BOURGUIBA 4200 KBELLI
+74665345
+411035 TAHAR AHMED
+AV ADDOULLEB IMM IMEN 1200
+KASSERINE
+77476610
+''';
+
+    final rows = OcrService().extractRows(rawText);
+
+    expect(rows, hasLength(3));
+    expect(rows[0].name, 'TABBESSI TAREK');
+    expect(rows[0].address, contains('RUE ABOU KACEM CHABBI'));
+    expect(rows[0].address, isNot(contains('TRIGUI HANA')));
+    expect(rows[0].address, isNot(contains('AV HABIB BOURGUIBA')));
+    expect(rows[0].phone, isNull);
+    expect(rows[1].code, isEmpty);
+    expect(rows[1].name, 'TRIGUI HANA');
+    expect(rows[1].address, contains('AV HABIB BOURGUIBA'));
+    expect(rows[1].phone, '74665345');
+    expect(rows[2].name, 'TAHAR AHMED');
+    expect(rows[2].phone, '77476610');
+  });
+
+  test('extractRows keeps known location fragments in address', () {
+    const rawText = '''
+411000 TAHER EMNA
+AV ENVIRONNEMENT KM1 IM
+ZOHER BEN GUERDEN
+53630541
+1721527X
+''';
+
+    final rows = OcrService().extractRows(rawText);
+
+    expect(rows, hasLength(1));
+    expect(rows.single.name, 'TAHER EMNA');
+    expect(rows.single.address, contains('ZOHER BEN GUERDEN'));
+    expect(rows.single.phone, '53630541');
+    expect(rows.single.taxCode, '1721527X');
+  });
+
+  test('extractRows ignores extra TVA fragments after first row TVA', () {
+    const rawText = '''
+411058 TRIFA EMNA
+RTE AFRAN KM 3 RESD GHADA APP1.4
+1594044V
+9999999X
+8888888Y
+411047 TRIFA TIMOUMI EMNA
+CITE EL BALAOUI RTE HAFFOUZ
+1626251CAP000
+''';
+
+    final rows = OcrService().extractRows(rawText);
+
+    expect(rows, hasLength(2));
+    expect(rows.first.name, 'TRIFA EMNA');
+    expect(rows.first.taxCode, '1594044V');
+    expect(rows.first.address, isNot(contains('9999999X')));
+    expect(rows.first.address, isNot(contains('8888888Y')));
+    expect(rows.last.name, 'TRIFA TIMOUMI EMNA');
+    expect(rows.last.taxCode, '1626251CAP000');
+  });
+
+  test('extractRows cleans phone and TVA fragments out of addresses', () {
+    const rawText = '''
+411058 TRIFA EMNA
+RTE AFRAN KM 3 RESD GHADA APP1.4 74661163 1594044V
+''';
+
+    final rows = OcrService().extractRows(rawText);
+
+    expect(rows, hasLength(1));
+    expect(rows.single.name, 'TRIFA EMNA');
+    expect(rows.single.address, 'RTE AFRAN KM 3 RESD GHADA APP1.4');
+    expect(rows.single.phone, '74661163');
+    expect(rows.single.taxCode, '1594044V');
+  });
+
+  test('extractRows supports simple name and city lists without codes', () {
+    const rawText = '''
+Liste Clients
+Nom Ville
+TABBESSI TAREK FOUSSANA
+TAHAR AHMED KASSERINE
+TAHER EMNA KASSERINE
+TAHER FATMA GAFSA
+TAHER HAZEM SFAX
+TALEB ATEF GABES
+TELILI MONGI KAIROUAN
+THABET HANA SFAX
+THAMER MAROUEN GABES
+TITAY WISSEM TOZEUR
+TKA ANIS MAHDIA
+TLILI IMED SFAX
+TOUATI HAITHEM KEBILI
+TRIFA EMNA SOUSSE
+TRIGUI HANA SFAX
+WOUROUD ABBES MAALOUL GABES
+''';
+
+    final rows = OcrService().extractRows(rawText);
+
+    expect(rows, hasLength(16));
+    expect(rows.first.code, isEmpty);
+    expect(rows.first.name, 'TABBESSI TAREK');
+    expect(rows.first.address, 'FOUSSANA');
+    expect(rows.first.phone, isNull);
+    expect(rows.last.name, 'WOUROUD ABBES MAALOUL');
+    expect(rows.last.address, 'GABES');
+  });
+
+  test('extractRows supports simple lists where city is on the next line', () {
+    const rawText = '''
+Clients
+TRIGUI WIEM
+SFAX
+TRIFA EMNA
+SOUSSE
+WOUROUD ABBES MAALOUL
+GABES
+''';
+
+    final rows = OcrService().extractRows(rawText);
+
+    expect(rows, hasLength(3));
+    expect(rows.map((row) => row.name), [
+      'TRIGUI WIEM',
+      'TRIFA EMNA',
+      'WOUROUD ABBES MAALOUL',
+    ]);
+    expect(rows.map((row) => row.address), ['SFAX', 'SOUSSE', 'GABES']);
+  });
+
+  test('extractRows keeps same names in different cities', () {
+    const rawText = '''
+Clients
+ALI AMOR SFAX
+ALI AMOR SOUSSE
+ALI AMOR GABES
+''';
+
+    final rows = OcrService().extractRows(rawText);
+
+    expect(rows, hasLength(3));
+    expect(rows.map((row) => row.address), ['SFAX', 'SOUSSE', 'GABES']);
+  });
+
   test('guessCityFromAddress normalizes Kbelli spelling to Kebeli', () {
     const address = 'AV HABIB BOURGUIBA 4200 KBELLI';
 

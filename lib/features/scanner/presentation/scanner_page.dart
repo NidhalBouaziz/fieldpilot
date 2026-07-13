@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/models/customer.dart';
 import '../../../core/repositories/providers.dart';
+import '../../../core/services/customer_import_resolver.dart';
 import '../../../core/services/ocr_service.dart';
 import '../../../shared/widgets/logout_button.dart';
 
@@ -67,7 +68,7 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
       final image = await _picker.pickImage(
         source: source,
         imageQuality: 100,
-        maxWidth: 3200,
+        maxWidth: 4096,
       );
       if (image == null) return;
 
@@ -253,14 +254,20 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
     setState(() => _savingBulk = true);
     final repository = ref.read(customerRepositoryProvider);
     try {
-      for (final customer in _bulkCustomers) {
+      final existingCustomers = await repository.list(includeArchived: true);
+      final importResult = resolveCustomerImport(
+        _bulkCustomers,
+        existingCustomers,
+      );
+
+      for (final customer in importResult.customersToSave) {
         await repository.save(customer);
       }
       ref.invalidate(customersProvider);
       ref.invalidate(dashboardSnapshotProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved ${_bulkCustomers.length} customers')),
+        SnackBar(content: Text(importResult.message)),
       );
       setState(() {
         _bulkCustomers = const [];
@@ -282,6 +289,9 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final bulkWarningCount = _bulkCustomers
+        .where((customer) => _customerWarnings(customer).isNotEmpty)
+        .length;
 
     return Scaffold(
       appBar: AppBar(
@@ -447,34 +457,26 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
                       '${_bulkCustomers.length} customers detected',
                       style: TextStyle(color: colorScheme.onSurfaceVariant),
                     ),
+                    if (bulkWarningCount > 0) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '$bulkWarningCount rows need review before saving',
+                        style: TextStyle(
+                          color: colorScheme.error,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     for (final entry
                         in _bulkCustomers.take(20).toList().asMap().entries)
-                      ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: CircleAvatar(
-                          radius: 14,
-                          child: Text('${entry.key + 1}'),
-                        ),
-                        title: Text(entry.value.displayName),
-                        subtitle: Text(
-                          [
-                            if (entry.value.city.isNotEmpty) entry.value.city,
-                            if (entry.value.phone.isNotEmpty) entry.value.phone,
-                            if (entry.value.address != null)
-                              entry.value.address!,
-                          ].join(' | '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: IconButton(
-                          onPressed: _savingBulk
-                              ? null
-                              : () => _removeBulkCustomer(entry.key),
-                          icon: const Icon(Icons.close),
-                          tooltip: 'Remove row',
-                        ),
+                      _BulkCustomerTile(
+                        index: entry.key,
+                        customer: entry.value,
+                        warnings: _customerWarnings(entry.value),
+                        onRemove: _savingBulk
+                            ? null
+                            : () => _removeBulkCustomer(entry.key),
                       ),
                     if (_bulkCustomers.length > 20)
                       Text('+ ${_bulkCustomers.length - 20} more'),
@@ -530,11 +532,52 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
     );
   }
 
+  List<String> _customerWarnings(Customer customer) {
+    final warnings = <String>[];
+    final name = customer.displayName.trim();
+    if (name.isEmpty) {
+      warnings.add('Missing name');
+    }
+    if (RegExp(r'\d').hasMatch(name)) {
+      warnings.add('Name has digits');
+    }
+    if (RegExp(
+      r'\b(RUE|AV|AVENUE|RTE|ROUTE|IMM|RES|KM|CITE)\b',
+      caseSensitive: false,
+    ).hasMatch(name)) {
+      warnings.add('Name looks like address');
+    }
+    if ((customer.address == null || customer.address!.trim().isEmpty) &&
+        customer.city.trim().isEmpty) {
+      warnings.add('Missing location');
+    }
+    if (customer.address != null &&
+        RegExp(
+          r'\d{5,}(?:/[A-Z]|[A-Z])[A-Z0-9]*',
+          caseSensitive: false,
+        ).hasMatch(customer.address!)) {
+      warnings.add('Address has identifier');
+    }
+    final notes = customer.notes ?? '';
+    final tvaCount = RegExp(
+      'Code TVA:',
+      caseSensitive: false,
+    ).allMatches(notes).length;
+    if (tvaCount > 1) {
+      warnings.add('Multiple TVA codes');
+    }
+    return warnings;
+  }
+
   void _setBulkCustomers(List<ExtractedCustomerRow> rows) {
     final now = DateTime.now();
     final customers = rows.map((row) {
       final nameParts = row.name.trim().split(RegExp(r'\s+'));
       final city = guessCityFromAddress(row.address);
+      final notes = [
+        if (row.code.isNotEmpty) 'Code client: ${row.code}',
+        if (row.taxCode != null) 'Code TVA: ${row.taxCode}',
+      ];
       return Customer(
         id: ref.read(idGeneratorProvider)(),
         firstName: nameParts.isEmpty ? row.name : nameParts.first,
@@ -544,14 +587,11 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
         address: row.address,
         city: city,
         governorate: city,
-        notes: [
-          'Code client: ${row.code}',
-          if (row.taxCode != null) 'Code TVA: ${row.taxCode}',
-        ].join('\n'),
+        notes: notes.isEmpty ? null : notes.join('\n'),
         status: CustomerStatus.neverVisited,
         createdAt: now,
         updatedAt: now,
-        tags: ['bulk-scan', row.code],
+        tags: ['bulk-scan', if (row.code.isNotEmpty) row.code],
       );
     }).toList();
 
@@ -684,6 +724,56 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
       firstPage.dispose();
       lastPage.dispose();
     }
+  }
+}
+
+class _BulkCustomerTile extends StatelessWidget {
+  const _BulkCustomerTile({
+    required this.index,
+    required this.customer,
+    required this.warnings,
+    required this.onRemove,
+  });
+
+  final int index;
+  final Customer customer;
+  final List<String> warnings;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasWarnings = warnings.isNotEmpty;
+
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        radius: 14,
+        backgroundColor: hasWarnings
+            ? colorScheme.errorContainer
+            : colorScheme.primaryContainer,
+        child: Text('${index + 1}'),
+      ),
+      title: Text(customer.displayName),
+      subtitle: Text(
+        [
+          if (hasWarnings) 'Review: ${warnings.join(', ')}',
+          [
+            if (customer.city.isNotEmpty) customer.city,
+            if (customer.phone.isNotEmpty) customer.phone,
+            if (customer.address != null) customer.address!,
+          ].join(' | '),
+        ].where((part) => part.isNotEmpty).join('\n'),
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: IconButton(
+        onPressed: onRemove,
+        icon: const Icon(Icons.close),
+        tooltip: 'Remove row',
+      ),
+    );
   }
 }
 

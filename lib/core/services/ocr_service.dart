@@ -14,6 +14,8 @@ const Map<String, String> _locationAliases = {
   'GAFSA': 'GAFSA',
   'KAIROUAN': 'KAIROUAN',
   'DJERBA': 'MEDENINE',
+  'BEN GUERDEN': 'MEDENINE',
+  'BEN GUERDANE': 'MEDENINE',
   'GABES': 'GABES',
   'GABES MEDINA': 'GABES',
   'MEDNIN': 'MEDENINE',
@@ -90,6 +92,19 @@ const List<String> _addressMarkers = [
   'IMMEUBLE',
   'APP',
   'ETAGE',
+  'BLOC',
+  'BD',
+  'BOULEVARD',
+  'BUREAU',
+  'CENTRE',
+  'CENTER',
+  'LOCAL',
+  'LOT',
+  'LOTISSEMENT',
+  'MAG',
+  'MAGASIN',
+  'QUARTIER',
+  'ZONE',
 ];
 
 String guessCityFromAddress(String? address) {
@@ -133,6 +148,15 @@ bool _looksLikeAddressLine(String value) {
       _looksLikeLocationOnly(normalized);
 }
 
+bool _containsKnownLocation(String value) {
+  final normalized = _normalizeComparable(value);
+  for (final alias in _locationAliases.keys) {
+    final pattern = RegExp(r'(^|\s)' + RegExp.escape(alias) + r'(\s|$)');
+    if (pattern.hasMatch(normalized)) return true;
+  }
+  return false;
+}
+
 bool _isLikelyCustomerName(String value) {
   final normalized = _normalizeComparable(value);
   if (normalized.isEmpty) return false;
@@ -144,6 +168,14 @@ bool _isLikelyCustomerName(String value) {
 
   final wordCount = RegExp(r'[A-Z]{2,}').allMatches(normalized).length;
   return wordCount >= 2;
+}
+
+bool _looksLikeOrphanCustomerName(String value) {
+  final normalized = _normalizeComparable(value);
+  if (!_isLikelyCustomerName(normalized)) return false;
+  if (_containsKnownLocation(normalized)) return false;
+  if (RegExp(r'\d').hasMatch(normalized)) return false;
+  return true;
 }
 
 ({String? name, String? address}) _splitNameAndAddress(String value) {
@@ -282,7 +314,7 @@ class ExtractedCustomerRow {
       phone?.trim().isNotEmpty == true ||
       taxCode?.trim().isNotEmpty == true;
 
-  bool get isUsable => code.isNotEmpty && _isLikelyCustomerName(name);
+  bool get isUsable => _isLikelyCustomerName(name);
 }
 
 class ExtractedCustomerText {
@@ -345,7 +377,7 @@ class OcrService {
       await for (final page in Printing.raster(
         pdfBytes,
         pages: pages,
-        dpi: 220,
+        dpi: 300,
       )) {
         _throwIfCancelled(cancellationToken);
         pageIndex += 1;
@@ -414,13 +446,22 @@ class OcrService {
       }
 
       if (current == null) continue;
+      if (current.hasName && _looksLikeOrphanCustomerName(line)) {
+        current = _CustomerRowBuilder('');
+        current.addInlineText(line);
+        builders.add(current);
+        continue;
+      }
       current.addInlineText(line);
     }
 
-    return builders
+    final codedRows = builders
         .map((builder) => builder.build())
         .where((row) => row.isUsable)
         .toList();
+    final simpleRows = _simpleListRows(rawText);
+    if (simpleRows.length > codedRows.length) return simpleRows;
+    return codedRows;
   }
 
   Future<ExtractedCustomerText> extract(String rawText) async {
@@ -525,7 +566,7 @@ class OcrService {
 
     if (x >= 0.80 || _taxCode(value) != null) {
       final taxCode = _taxCode(value);
-      if (taxCode != null) row.taxCode = taxCode;
+      if (taxCode != null) row.taxCode ??= taxCode;
       return;
     }
 
@@ -577,6 +618,70 @@ class OcrService {
     return lines;
   }
 
+  List<ExtractedCustomerRow> _simpleListRows(String rawText) {
+    final rows = <ExtractedCustomerRow>[];
+    final seen = <String>{};
+    String? pendingName;
+
+    void addRow(String name, String address) {
+      final normalized = _normalizeNameAndAddress(name, address);
+      if (!_isLikelyCustomerName(normalized.name)) return;
+      final normalizedAddress = normalized.address;
+      if (normalizedAddress == null ||
+          guessCityFromAddress(normalizedAddress).isEmpty) {
+        return;
+      }
+
+      final key = '${normalized.name.toUpperCase()}|'
+          '${normalizedAddress.toUpperCase()}';
+      if (!seen.add(key)) return;
+      rows.add(
+        ExtractedCustomerRow(
+          code: '',
+          name: normalized.name,
+          address: normalizedAddress,
+        ),
+      );
+    }
+
+    for (final line in _logicalLines(rawText)) {
+      if (_isHeaderLine(line) || _rowStart(line) != null) {
+        pendingName = null;
+        continue;
+      }
+
+      if (_phone(line) != null || _taxCode(line) != null) {
+        pendingName = null;
+        continue;
+      }
+
+      if (_looksLikeLocationOnly(line)) {
+        if (pendingName != null) {
+          addRow(pendingName, line);
+          pendingName = null;
+        }
+        continue;
+      }
+
+      final normalized = _normalizeNameAndAddress(line, null);
+      if (normalized.address != null &&
+          guessCityFromAddress(normalized.address).isNotEmpty &&
+          _isLikelyCustomerName(normalized.name)) {
+        addRow(normalized.name, normalized.address!);
+        pendingName = null;
+        continue;
+      }
+
+      if (_isLikelyCustomerName(line) && !_looksLikeAddressLine(line)) {
+        pendingName = line;
+      } else {
+        pendingName = null;
+      }
+    }
+
+    return rows;
+  }
+
   RegExpMatch? _rowStart(String value) {
     final trimmed = value.trim();
     final match = RegExp(r'^(\d{5,6})(?:\s+(.*)|$)').firstMatch(trimmed);
@@ -599,7 +704,9 @@ class OcrService {
     final seen = <String>{};
 
     for (final row in [...winner, ...fallback]) {
-      final key = '${row.code}|${row.name.toUpperCase()}';
+      final key = row.code.isEmpty
+          ? '|${row.name.toUpperCase()}|${row.address?.toUpperCase() ?? ''}'
+          : '${row.code}|${row.name.toUpperCase()}';
       if (seen.add(key)) merged.add(row);
     }
     return merged;
@@ -609,7 +716,16 @@ class OcrService {
     final value = line.toLowerCase();
     return value.contains('etat des clients') ||
         value.contains('repr') ||
+        (value.contains('liste') && value.contains('client')) ||
         value == 'code' ||
+        value == 'client' ||
+        value == 'clients' ||
+        value == 'nom' ||
+        value == 'name' ||
+        value == 'ville' ||
+        value == 'city' ||
+        (value.contains('nom') && value.contains('ville')) ||
+        (value.contains('client') && value.contains('ville')) ||
         value.contains('raison sociale') ||
         value == 'adresse' ||
         value == 'tel' ||
@@ -636,19 +752,24 @@ class _CustomerRowBuilder {
   final String code;
   final List<String> _name = [];
   final List<String> _address = [];
+  bool _ignoreUntilNextCode = false;
   String? phone;
   String? taxCode;
 
   String get name => _name.join(' ').trim();
+  bool get hasName => _name.isNotEmpty;
 
   void addInlineText(String value) {
     var remaining = _cleanText(value);
     if (remaining.isEmpty) return;
+    if (_ignoreUntilNextCode) return;
 
-    final tax = _taxCode(remaining);
-    if (tax != null) {
-      taxCode = tax;
-      remaining = _cleanText(remaining.replaceFirst(tax, ''));
+    final taxes = _taxCodes(remaining);
+    if (taxes.isNotEmpty) {
+      taxCode ??= taxes.first;
+      for (final tax in taxes) {
+        remaining = _cleanText(remaining.replaceFirst(tax, ''));
+      }
     }
 
     final linePhone = _phoneMatch(remaining);
@@ -659,6 +780,11 @@ class _CustomerRowBuilder {
 
     if (remaining.isEmpty) return;
     if (RegExp(r'^\d+$').hasMatch(remaining)) return;
+
+    if (_name.isNotEmpty && _looksLikeOrphanCustomerName(remaining)) {
+      _ignoreUntilNextCode = true;
+      return;
+    }
 
     if (_name.isEmpty) {
       final split = _splitNameAndAddress(remaining);
@@ -702,21 +828,74 @@ class _CustomerRowBuilder {
       name,
       _address.isEmpty ? null : _address.join(' '),
     );
-    return ExtractedCustomerRow(
-      code: code,
+    final cleaned = _cleanExtractedFields(
       name: normalized.name,
       address: normalized.address,
       phone: phone,
       taxCode: taxCode,
     );
+    return ExtractedCustomerRow(
+      code: code,
+      name: cleaned.name,
+      address: cleaned.address,
+      phone: cleaned.phone,
+      taxCode: cleaned.taxCode,
+    );
   }
 }
 
+({String name, String? address, String? phone, String? taxCode})
+    _cleanExtractedFields({
+  required String name,
+  required String? address,
+  required String? phone,
+  required String? taxCode,
+}) {
+  var cleanName = _cleanText(name);
+  var cleanAddress = address == null ? null : _cleanText(address);
+  var cleanPhone = phone;
+  var cleanTaxCode = taxCode;
+
+  for (final tax in _taxCodes(cleanName)) {
+    cleanTaxCode ??= tax;
+    cleanName = _cleanText(cleanName.replaceFirst(tax, ''));
+  }
+
+  var addressValue = cleanAddress ?? '';
+  if (addressValue.isNotEmpty) {
+    for (final tax in _taxCodes(addressValue)) {
+      cleanTaxCode ??= tax;
+      addressValue = _cleanText(addressValue.replaceFirst(tax, ''));
+    }
+
+    var phoneMatch = _phoneMatch(addressValue);
+    while (phoneMatch != null) {
+      cleanPhone ??= phoneMatch.display;
+      addressValue =
+          _cleanText(addressValue.replaceFirst(phoneMatch.source, ''));
+      phoneMatch = _phoneMatch(addressValue);
+    }
+    cleanAddress = addressValue;
+  }
+
+  return (
+    name: cleanName,
+    address: cleanAddress?.isEmpty == true ? null : cleanAddress,
+    phone: cleanPhone,
+    taxCode: cleanTaxCode,
+  );
+}
+
 String? _taxCode(String value) {
+  final matches = _taxCodes(value);
+  return matches.isEmpty ? null : matches.first;
+}
+
+List<String> _taxCodes(String value) {
   return RegExp(
     r'(?<!\d)(\d{5,}(?:/[A-Z]|[A-Z])[A-Z0-9]*)(?![A-Z0-9])',
     caseSensitive: false,
-  ).firstMatch(value.trim())?.group(1);
+  ).allMatches(value.trim()).map((match) => match.group(1)!).toList();
 }
 
 String? _phone(String value) {

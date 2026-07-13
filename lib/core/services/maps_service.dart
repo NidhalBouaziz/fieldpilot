@@ -1,4 +1,5 @@
 import 'package:url_launcher/url_launcher.dart';
+import 'package:geocoding/geocoding.dart';
 
 import '../models/customer.dart';
 
@@ -37,6 +38,8 @@ const Map<String, MapPoint> tunisiaGovernoratePoints = {
   'ZAGHOUAN': MapPoint(36.4029, 10.1429, approximate: true),
 };
 
+final Map<String, MapPoint?> _geocodeCache = {};
+
 MapPoint? mapPointForCustomer(Customer customer) {
   if (customer.latitude != null && customer.longitude != null) {
     return MapPoint(customer.latitude!, customer.longitude!);
@@ -48,9 +51,31 @@ MapPoint? mapPointForCustomer(Customer customer) {
       tunisiaGovernoratePoints[city];
 }
 
-String mapsQueryForCustomer(Customer customer) {
+Future<MapPoint?> resolveMapPointForCustomer(Customer customer) async {
+  if (customer.latitude != null && customer.longitude != null) {
+    return MapPoint(customer.latitude!, customer.longitude!);
+  }
+
+  final query = mapsAddressQueryForCustomer(customer);
+  if (query.isNotEmpty) {
+    if (_geocodeCache.containsKey(query)) return _geocodeCache[query];
+    try {
+      final locations = await locationFromAddress(query);
+      final first = locations.isEmpty ? null : locations.first;
+      final point =
+          first == null ? null : MapPoint(first.latitude, first.longitude);
+      _geocodeCache[query] = point;
+      if (point != null) return point;
+    } catch (_) {
+      _geocodeCache[query] = null;
+    }
+  }
+
+  return mapPointForCustomer(customer);
+}
+
+String mapsAddressQueryForCustomer(Customer customer) {
   final parts = [
-    customer.displayName,
     customer.address,
     customer.city,
     customer.governorate,
@@ -59,7 +84,12 @@ String mapsQueryForCustomer(Customer customer) {
     return part.isNotEmpty;
   }).toList();
 
-  if (parts.isNotEmpty) return parts.join(', ');
+  return parts.join(', ');
+}
+
+String mapsQueryForCustomer(Customer customer) {
+  final addressQuery = mapsAddressQueryForCustomer(customer);
+  if (addressQuery.isNotEmpty) return addressQuery;
   final point = mapPointForCustomer(customer);
   if (point != null) return '${point.latitude},${point.longitude}';
   return customer.displayName;
