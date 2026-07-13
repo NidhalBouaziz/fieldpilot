@@ -18,8 +18,3 @@ windows/flutter/ephemeral/
 *.iml
 .idea/
 .vscode/
-
-# Local Firebase and API credentials
-android/app/google-services*.json
-ios/**/GoogleService-Info.plist
-lib/firebase_options.dart

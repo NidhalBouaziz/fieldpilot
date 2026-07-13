@@ -13,10 +13,6 @@ val localProperties = Properties().apply {
     }
 }
 
-if (file("google-services.json").exists()) {
-    apply(plugin = "com.google.gms.google-services")
-}
-
 android {
     namespace = "com.fieldpilot.app"
     compileSdk = flutter.compileSdkVersion

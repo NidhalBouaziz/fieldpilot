@@ -70,8 +70,9 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       final ok = await auth.authenticate(
-        localizedReason: 'Unlock FieldPilot',
+        localizedReason: 'Unlock FieldPilot with face or fingerprint',
         biometricOnly: true,
+        sensitiveTransaction: false,
         persistAcrossBackgrounding: true,
       );
       if (ok && mounted) context.go('/dashboard');
@@ -87,6 +88,8 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final hasSavedSession = SupabaseBootstrap.configured &&
+        SupabaseBootstrap.client.auth.currentSession != null;
 
     return Scaffold(
       body: SafeArea(
@@ -151,14 +154,16 @@ class _LoginPageState extends State<LoginPage> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
-                            'Sign in',
+                            hasSavedSession ? 'Unlock' : 'Sign in',
                             style: textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Access your visits, customers, and scanned files.',
+                            hasSavedSession
+                                ? 'Use biometrics to continue with your saved session.'
+                                : 'Access your visits, customers, and scanned files.',
                             style: textTheme.bodyMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
@@ -217,7 +222,11 @@ class _LoginPageState extends State<LoginPage> {
                           OutlinedButton.icon(
                             onPressed: _biometricLogin,
                             icon: const Icon(Icons.fingerprint),
-                            label: const Text('Use biometrics'),
+                            label: Text(
+                              hasSavedSession
+                                  ? 'Unlock with biometrics'
+                                  : 'Use biometrics',
+                            ),
                           ),
                           TextButton(
                             onPressed: () => context.go('/forgot-password'),

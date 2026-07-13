@@ -28,6 +28,7 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
   double? _scanProgress;
   OcrScanCancellationToken? _pdfScanToken;
   bool _busy = false;
+  bool _savingBulk = false;
 
   @override
   void initState() {
@@ -205,7 +206,7 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
     }
 
     final rows = ref.read(ocrServiceProvider).extractRows(rawText);
-    if (rows.length > 1) {
+    if (rows.isNotEmpty) {
       _setBulkCustomers(rows);
       return;
     }
@@ -248,23 +249,33 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
   }
 
   Future<void> _saveBulk() async {
-    if (_bulkCustomers.isEmpty) return;
+    if (_savingBulk || _bulkCustomers.isEmpty) return;
+    setState(() => _savingBulk = true);
     final repository = ref.read(customerRepositoryProvider);
-    for (final customer in _bulkCustomers) {
-      await repository.save(customer);
+    try {
+      for (final customer in _bulkCustomers) {
+        await repository.save(customer);
+      }
+      ref.invalidate(customersProvider);
+      ref.invalidate(dashboardSnapshotProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved ${_bulkCustomers.length} customers')),
+      );
+      setState(() {
+        _bulkCustomers = const [];
+        _reviewCustomer = null;
+        _rawText.clear();
+        _sourceLabel = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save customers: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingBulk = false);
     }
-    ref.invalidate(customersProvider);
-    ref.invalidate(dashboardSnapshotProvider);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Saved ${_bulkCustomers.length} customers')),
-    );
-    setState(() {
-      _bulkCustomers = const [];
-      _reviewCustomer = null;
-      _rawText.clear();
-      _sourceLabel = null;
-    });
   }
 
   @override
@@ -457,13 +468,25 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        trailing: IconButton(
+                          onPressed: _savingBulk
+                              ? null
+                              : () => _removeBulkCustomer(entry.key),
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Remove row',
+                        ),
                       ),
                     if (_bulkCustomers.length > 20)
                       Text('+ ${_bulkCustomers.length - 20} more'),
                     const SizedBox(height: 12),
                     FilledButton.icon(
-                      onPressed: _saveBulk,
-                      icon: const Icon(Icons.playlist_add_check),
+                      onPressed: _savingBulk ? null : _saveBulk,
+                      icon: _savingBulk
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.playlist_add_check),
                       label: const Text('Save all customers'),
                     ),
                   ],
@@ -511,7 +534,7 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
     final now = DateTime.now();
     final customers = rows.map((row) {
       final nameParts = row.name.trim().split(RegExp(r'\s+'));
-      final city = _guessCity(row.address);
+      final city = guessCityFromAddress(row.address);
       return Customer(
         id: ref.read(idGeneratorProvider)(),
         firstName: nameParts.isEmpty ? row.name : nameParts.first,
@@ -535,6 +558,15 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
     setState(() {
       _reviewCustomer = null;
       _bulkCustomers = customers;
+    });
+  }
+
+  void _removeBulkCustomer(int index) {
+    setState(() {
+      _bulkCustomers = [
+        for (var i = 0; i < _bulkCustomers.length; i += 1)
+          if (i != index) _bulkCustomers[i],
+      ];
     });
   }
 
@@ -652,42 +684,6 @@ class _ScannerPageState extends ConsumerState<ScannerPage>
       firstPage.dispose();
       lastPage.dispose();
     }
-  }
-
-  String _guessCity(String? address) {
-    final value = address?.toUpperCase() ?? '';
-    const aliases = {
-      'SAKIET EZZIT': 'SAKIET EZZIT',
-      'SAKIET': 'SAKIET EZZIT',
-      'FOUSSANA': 'FOUSSANA',
-      'KASSERINE': 'KASSERINE',
-      'DOUALY': 'GAFSA',
-      'GAFSA': 'GAFSA',
-      'KAIROUAN': 'KAIROUAN',
-      'DJERBA': 'DJERBA',
-      'GABES': 'GABES',
-      'MEDNIN': 'MEDNIN',
-      'MEDENINE': 'MEDENINE',
-      'ELLOUZA': 'ELLOUZA',
-      'SFAX': 'SFAX',
-      'REDEYEF': 'REDEYEF',
-      'KEBELI': 'KEBELI',
-      'BOUHEL': 'BOUHEL',
-      'BOUHELL': 'BOUHEL',
-      'MSSAKEN': 'MSSAKEN',
-      'HAFFOUZ': 'HAFFOUZ',
-      'SIDI MANSOUR': 'SIDI MANSOUR',
-      'GHANNOUCHE': 'GHANNOUCHE',
-      'MONASTIR': 'MONASTIR',
-      'SOUSSE': 'SOUSSE',
-      'TOZEUR': 'TOZEUR',
-      'TUNIS': 'TUNIS',
-      'FERIANA': 'FERIANA',
-    };
-    for (final entry in aliases.entries) {
-      if (value.contains(entry.key)) return entry.value;
-    }
-    return '';
   }
 }
 

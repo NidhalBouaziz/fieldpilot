@@ -60,6 +60,11 @@ Keep the Maps key local by adding it to `android/local.properties`:
 GOOGLE_MAPS_API_KEY=your_key_here
 ```
 
+Use a key from your own Google Cloud project and restrict it to this app/package.
+Do not commit public keys copied from another website. Customer address taps open
+Google Maps search links, and the Map page shows exact customer coordinates when
+saved or approximate governorate markers when only city/governorate is known.
+
 ## Next build steps
 
 1. Run `flutter pub get`.

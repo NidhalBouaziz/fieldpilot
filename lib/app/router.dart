@@ -1,5 +1,9 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/services/supabase_bootstrap.dart';
 import '../features/analytics/presentation/analytics_page.dart';
@@ -19,8 +23,12 @@ import '../features/visits/presentation/visits_page.dart';
 import '../shared/widgets/app_shell.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
+  final authRefresh = _SupabaseAuthRefresh();
+  ref.onDispose(authRefresh.dispose);
+
   return GoRouter(
     initialLocation: '/login',
+    refreshListenable: authRefresh,
     redirect: (_, state) {
       final authRoute = switch (state.uri.path) {
         '/login' || '/register' || '/forgot-password' => true,
@@ -29,7 +37,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       final signedIn = SupabaseBootstrap.configured &&
           SupabaseBootstrap.client.auth.currentSession != null;
 
-      if (signedIn && authRoute) return '/dashboard';
+      if (signedIn && authRoute && state.uri.path != '/login') {
+        return '/dashboard';
+      }
       if (SupabaseBootstrap.configured && !signedIn && !authRoute) {
         return '/login';
       }
@@ -59,6 +69,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const CustomerFormPage(),
           ),
           GoRoute(
+            path: '/customers/:id/edit',
+            builder: (_, state) => CustomerFormPage(
+              customerId: state.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
             path: '/customers/:id',
             builder: (_, state) =>
                 CustomerDetailPage(customerId: state.pathParameters['id']!),
@@ -81,3 +97,20 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+class _SupabaseAuthRefresh extends ChangeNotifier {
+  _SupabaseAuthRefresh() {
+    if (!SupabaseBootstrap.configured) return;
+    _subscription = SupabaseBootstrap.client.auth.onAuthStateChange.listen(
+      (_) => notifyListeners(),
+    );
+  }
+
+  StreamSubscription<AuthState>? _subscription;
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+}
